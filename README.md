@@ -53,8 +53,7 @@ cd take_word_project
 Sanal ortam oluştur ve aktif et (Önerilen):
 ```bash
 python -m venv venv
-source venv/bin/activate  # Mac/Linux için
-# venv\Scripts\activate   # Windows için
+source venv/bin/activate  # Linux için
 ```
 Gerekli kütüphaneleri yükle:
 ```bash
