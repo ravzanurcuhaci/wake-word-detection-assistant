@@ -24,42 +24,47 @@ model = joblib.load("svm_model.pkl")
 scaler = joblib.load("scaler.pkl")
 
 def extract_features_from_audio(audio, sr=16000):
-    # Tek boyuta indir
     audio = np.squeeze(audio)
 
-    # Uzunluk sabitle
+    # Sessizliği kırp
+    audio_trimmed, _ = librosa.effects.trim(audio, top_db=30)
+    if len(audio_trimmed) > 4096:
+        audio = audio_trimmed
+
+    # Uzunluk sabitle (1 Saniye Padding/Truncating)
+    TARGET_LENGTH = 16000
     if len(audio) > TARGET_LENGTH:
         audio = audio[:TARGET_LENGTH]
     else:
         audio = np.pad(audio, (0, TARGET_LENGTH - len(audio)))
 
-    # Ses düzeyini normalize et (Eğer ses çok kısıksa yükseltir)
+    # Dip gürültüsü kontrolü
     max_amp = np.max(np.abs(audio))
-    
-    # Sessizlik / Dip Gürültüsü kontrolü (Önemli!)
-    # Eğer mikrofondan gelen en yüksek ses 0.02'den düşükse bu bir sessizliktir
-    is_silent = max_amp < 0.02
+    is_silent = max_amp < 0.06
 
-    if max_amp > 0:
-        audio = audio / max_amp
+    if not is_silent and max_amp > 0:
+        audio = librosa.util.normalize(audio)
 
-    # MFCC
-    mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=13)
-    
-    # Delta ve Delta-Delta
+    # Özellik çıkarımı (150 özellik)
+    mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=20)
     delta_mfcc = librosa.feature.delta(mfcc)
     delta2_mfcc = librosa.feature.delta(mfcc, order=2)
-
-    mfcc_mean = np.mean(mfcc, axis=1)
-    mfcc_std = np.std(mfcc, axis=1)
     
-    delta_mean = np.mean(delta_mfcc, axis=1)
-    delta_std = np.std(delta_mfcc, axis=1)
-    
-    delta2_mean = np.mean(delta2_mfcc, axis=1)
-    delta2_std = np.std(delta2_mfcc, axis=1)
+    rms = librosa.feature.rms(y=audio)
+    zcr = librosa.feature.zero_crossing_rate(y=audio)
+    centroid = librosa.feature.spectral_centroid(y=audio, sr=sr)
+    chroma = librosa.feature.chroma_stft(y=audio, sr=sr)
 
-    features = np.concatenate((mfcc_mean, mfcc_std, delta_mean, delta_std, delta2_mean, delta2_std)).reshape(1, -1)
+    features = np.concatenate((
+        np.mean(mfcc, axis=1), np.std(mfcc, axis=1),
+        np.mean(delta_mfcc, axis=1), np.std(delta_mfcc, axis=1),
+        np.mean(delta2_mfcc, axis=1), np.std(delta2_mfcc, axis=1),
+        np.mean(rms, axis=1), np.std(rms, axis=1),
+        np.mean(zcr, axis=1), np.std(zcr, axis=1),
+        np.mean(centroid, axis=1), np.std(centroid, axis=1),
+        np.mean(chroma, axis=1), np.std(chroma, axis=1)
+    )).reshape(1, -1)
+    
     return features, is_silent
 
 print("Sistem hazır. 3 saniyelik dinleme döngüsü başladı.")

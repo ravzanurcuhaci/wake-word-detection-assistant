@@ -6,7 +6,7 @@ import pandas as pd
 data = []
 
 dataset_path = "dataset_fixed"
-target_length = 48000   # 3 saniye * 16000 Hz
+target_length = 16000   # 1 saniye * 16000 Hz
 
 for folder in ["wake", "nonwake"]:
     label = 1 if folder == "wake" else 0
@@ -18,43 +18,58 @@ for folder in ["wake", "nonwake"]:
 
             y, sr = librosa.load(file_path, sr=16000)
 
-            # sesi 3 saniyeye sabitle
+            # Sessizliği kırp (VAD)
+            y_trimmed, _ = librosa.effects.trim(y, top_db=30)
+            if len(y_trimmed) > 4096:
+                y = y_trimmed
+            
+            # Sesi 1 saniye ile sınırla ve kısa ise DOLDUR (padding)
             if len(y) > target_length:
                 y = y[:target_length]
             else:
                 y = np.pad(y, (0, target_length - len(y)))
+                
+            # Normalize (-1 ile 1 arasına)
+            y = librosa.util.normalize(y)
 
-            # MFCC çıkar
-            mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-            
-            # Zaman içindeki değişimi yakalamak için Delta ve Delta-Delta eklentisi (Çok Kritik!)
+            # --- Zenginleştirilmiş Özellik Çıkarımı ---
+            mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
             delta_mfcc = librosa.feature.delta(mfcc)
             delta2_mfcc = librosa.feature.delta(mfcc, order=2)
-
-            # özet özellikler
-            mfcc_mean = np.mean(mfcc, axis=1)
-            mfcc_std = np.std(mfcc, axis=1)
             
-            delta_mean = np.mean(delta_mfcc, axis=1)
-            delta_std = np.std(delta_mfcc, axis=1)
-            
-            delta2_mean = np.mean(delta2_mfcc, axis=1)
-            delta2_std = np.std(delta2_mfcc, axis=1)
+            rms = librosa.feature.rms(y=y)
+            zcr = librosa.feature.zero_crossing_rate(y=y)
+            centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
+            chroma = librosa.feature.chroma_stft(y=y, sr=sr)
 
-            # Tüm özellikleri birleştir (13*6 = 78 özellik)
-            features = np.concatenate((mfcc_mean, mfcc_std, delta_mean, delta_std, delta2_mean, delta2_std))
+            # İstatistikleri hesapla ve birleştir
+            features = np.concatenate((
+                np.mean(mfcc, axis=1), np.std(mfcc, axis=1),
+                np.mean(delta_mfcc, axis=1), np.std(delta_mfcc, axis=1),
+                np.mean(delta2_mfcc, axis=1), np.std(delta2_mfcc, axis=1),
+                np.mean(rms, axis=1), np.std(rms, axis=1),
+                np.mean(zcr, axis=1), np.std(zcr, axis=1),
+                np.mean(centroid, axis=1), np.std(centroid, axis=1),
+                np.mean(chroma, axis=1), np.std(chroma, axis=1)
+            ))
 
             row = [file] + list(features) + [label]
             data.append(row)
 
 columns = ["filename"] + \
-          [f"mfcc{i+1}_mean" for i in range(13)] + \
-          [f"mfcc{i+1}_std" for i in range(13)] + \
-          [f"delta{i+1}_mean" for i in range(13)] + \
-          [f"delta{i+1}_std" for i in range(13)] + \
-          [f"delta2_{i+1}_mean" for i in range(13)] + \
-          [f"delta2_{i+1}_std" for i in range(13)] + \
+          [f"mfcc{i+1}_mean" for i in range(20)] + \
+          [f"mfcc{i+1}_std" for i in range(20)] + \
+          [f"delta{i+1}_mean" for i in range(20)] + \
+          [f"delta{i+1}_std" for i in range(20)] + \
+          [f"delta2_{i+1}_mean" for i in range(20)] + \
+          [f"delta2_{i+1}_std" for i in range(20)] + \
+          ["rms_mean", "rms_std"] + \
+          ["zcr_mean", "zcr_std"] + \
+          ["centroid_mean", "centroid_std"] + \
+          [f"chroma{i+1}_mean" for i in range(12)] + \
+          [f"chroma{i+1}_std" for i in range(12)] + \
           ["label"]
+
 
 df = pd.DataFrame(data, columns=columns)
 df.to_csv("dataset.csv", index=False)

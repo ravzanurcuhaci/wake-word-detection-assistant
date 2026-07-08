@@ -21,9 +21,17 @@ def predict_file(filepath):
     #     audio = audio / max_amp
         
     mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=13)
+    delta_mfcc = librosa.feature.delta(mfcc)
+    delta2_mfcc = librosa.feature.delta(mfcc, order=2)
+
     mfcc_mean = np.mean(mfcc, axis=1)
     mfcc_std = np.std(mfcc, axis=1)
-    features = np.concatenate((mfcc_mean, mfcc_std)).reshape(1, -1)
+    delta_mean = np.mean(delta_mfcc, axis=1)
+    delta_std = np.std(delta_mfcc, axis=1)
+    delta2_mean = np.mean(delta2_mfcc, axis=1)
+    delta2_std = np.std(delta2_mfcc, axis=1)
+
+    features = np.concatenate((mfcc_mean, mfcc_std, delta_mean, delta_std, delta2_mean, delta2_std)).reshape(1, -1)
     features = scaler.transform(features)
     
     pred = model.predict(features)[0]
